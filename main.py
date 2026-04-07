@@ -927,8 +927,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    if not all([TELEGRAM_TOKEN, CLAUDE_API_KEY, OMIE_APP_KEY, OMIE_APP_SECRET]):
-        raise EnvironmentError("Variáveis de ambiente ausentes. Verifique o arquivo .env")
+    variaveis = {
+        "TELEGRAM_TOKEN": TELEGRAM_TOKEN,
+        "CLAUDE_API_KEY": CLAUDE_API_KEY,
+        "OMIE_APP_KEY": OMIE_APP_KEY,
+        "OMIE_APP_SECRET": OMIE_APP_SECRET,
+    }
+    faltando = [k for k, v in variaveis.items() if not v]
+    if faltando:
+        raise EnvironmentError(f"Variáveis ausentes: {', '.join(faltando)}")
 
     # Agendamento: todo dia 1º do mês às 08:00 envia notas para a contadora
     scheduler = BackgroundScheduler()
