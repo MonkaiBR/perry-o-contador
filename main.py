@@ -19,10 +19,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
-OMIE_APP_KEY = os.getenv("OMIE_APP_KEY")
-OMIE_APP_SECRET = os.getenv("OMIE_APP_SECRET")
+TELEGRAM_TOKEN = (os.getenv("TELEGRAM_TOKEN") or "").strip()
+CLAUDE_API_KEY = (os.getenv("CLAUDE_API_KEY") or "").strip()
+OMIE_APP_KEY = (os.getenv("OMIE_APP_KEY") or "").strip()
+OMIE_APP_SECRET = (os.getenv("OMIE_APP_SECRET") or "").strip()
+MP_ACCESS_TOKEN = (os.getenv("MP_ACCESS_TOKEN") or "").strip()
 
 OMIE_BASE_URL = "https://app.omie.com.br/api/v1"
 EMAIL_REMETENTE = os.getenv("EMAIL_REMETENTE")
