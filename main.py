@@ -199,6 +199,24 @@ def cadastrar_fornecedor(razao_social, cnpj_cpf, email=None, telefone=None,
     return omie_request("geral/clientes", "IncluirCliente", dados)
 
 
+# ── Cadastro de Produtos / Matérias-Primas ────────────────────────────────────
+
+def cadastrar_produto(nome, unidade, preco, codigo_interno, tipo="produto", ncm=None, observacao=None):
+    """Cadastra produto ou matéria-prima no Omie."""
+    dados = {
+        "descricao": nome,
+        "unidade": unidade.upper(),
+        "valor_unitario": round(float(preco), 2),
+        "codigo_produto_integracao": str(codigo_interno),
+        "tipo_item": "04" if tipo == "materia_prima" else "00",  # 04=Matéria-prima, 00=Mercadoria
+    }
+    if ncm:
+        dados["ncm"] = "".join(c for c in ncm if c.isdigit())
+    if observacao:
+        dados["obs_internas"] = observacao
+    return omie_request("geral/produtos", "IncluirProduto", dados)
+
+
 # ── Vendas: Busca de dados ────────────────────────────────────────────────────
 
 def buscar_cliente_por_nome(nome):
@@ -798,6 +816,23 @@ TOOLS = [
         },
     },
     {
+        "name": "cadastrar_produto",
+        "description": "Cadastra um produto ou matéria-prima no Omie. OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
+        "input_schema": {
+            "type": "object",
+            "required": ["nome", "unidade", "preco", "codigo_interno"],
+            "properties": {
+                "nome": {"type": "string", "description": "Nome do produto ou matéria-prima"},
+                "unidade": {"type": "string", "description": "Unidade de medida (ex: KG, UN, L, G, CX)"},
+                "preco": {"type": "number", "description": "Preço unitário"},
+                "codigo_interno": {"type": "string", "description": "Código interno/CRM do produto"},
+                "tipo": {"type": "string", "description": "produto ou materia_prima"},
+                "ncm": {"type": "string", "description": "Código NCM (opcional)"},
+                "observacao": {"type": "string", "description": "Observação interna (opcional)"},
+            },
+        },
+    },
+    {
         "name": "emitir_nota_remessa",
         "description": "Emite NF-e de remessa para industrialização (CFOP 5.901) da empresa para a fábrica terceirizada (VINICOLA GIARETTA LTDA). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
         "input_schema": {
@@ -936,6 +971,8 @@ def run_tool(name, inputs):
         return cadastrar_cliente(**inputs)
     if name == "cadastrar_fornecedor":
         return cadastrar_fornecedor(**inputs)
+    if name == "cadastrar_produto":
+        return cadastrar_produto(**inputs)
     if name == "emitir_nota_remessa":
         return emitir_nota_remessa(**inputs)
     if name == "emitir_nota_retorno":
