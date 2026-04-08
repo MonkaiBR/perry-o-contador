@@ -129,6 +129,48 @@ def consultar_estoque():
     })
 
 
+def lancar_entrada_estoque(cod_produto, quantidade, valor_unitario, observacao=None):
+    """Lança entrada de estoque no Omie (compra/recebimento)."""
+    hoje = datetime.now().strftime("%d/%m/%Y")
+    return omie_request("estoque/movimentos", "LancarMovimento", {
+        "nCodProd": int(cod_produto),
+        "dDtMovimento": hoje,
+        "nQtde": float(quantidade),
+        "nValUnit": round(float(valor_unitario), 2),
+        "cObs": observacao or "Entrada de estoque registrada via Assistente Financeiro",
+        "cTipoMov": "E",  # E = Entrada
+    })
+
+
+def lancar_saida_estoque(cod_produto, quantidade, valor_unitario, observacao=None):
+    """Lança saída de estoque no Omie (consumo/remessa)."""
+    hoje = datetime.now().strftime("%d/%m/%Y")
+    return omie_request("estoque/movimentos", "LancarMovimento", {
+        "nCodProd": int(cod_produto),
+        "dDtMovimento": hoje,
+        "nQtde": float(quantidade),
+        "nValUnit": round(float(valor_unitario), 2),
+        "cObs": observacao or "Saída de estoque registrada via Assistente Financeiro",
+        "cTipoMov": "S",  # S = Saída
+    })
+
+
+def consultar_movimentos_estoque(cod_produto=None, dias=30):
+    """Consulta movimentações de estoque dos últimos N dias."""
+    hoje = datetime.now()
+    inicio = (hoje - timedelta(days=dias)).strftime("%d/%m/%Y")
+    fim = hoje.strftime("%d/%m/%Y")
+    params = {
+        "pagina": 1,
+        "registros_por_pagina": 100,
+        "dDtInicio": inicio,
+        "dDtFim": fim,
+    }
+    if cod_produto:
+        params["nCodProd"] = int(cod_produto)
+    return omie_request("estoque/movimentos", "ListarMovimentos", params)
+
+
 def listar_clientes_inadimplentes():
     hoje = datetime.now()
     params = {
@@ -833,6 +875,45 @@ TOOLS = [
         },
     },
     {
+        "name": "lancar_entrada_estoque",
+        "description": "Lança entrada de estoque no Omie (compra, recebimento de mercadoria). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
+        "input_schema": {
+            "type": "object",
+            "required": ["cod_produto", "quantidade", "valor_unitario"],
+            "properties": {
+                "cod_produto": {"type": "integer", "description": "Código do produto no Omie"},
+                "quantidade": {"type": "number", "description": "Quantidade recebida"},
+                "valor_unitario": {"type": "number", "description": "Valor unitário"},
+                "observacao": {"type": "string", "description": "Observação (ex: fornecedor, NF de compra)"},
+            },
+        },
+    },
+    {
+        "name": "lancar_saida_estoque",
+        "description": "Lança saída de estoque no Omie (consumo, remessa, perda). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
+        "input_schema": {
+            "type": "object",
+            "required": ["cod_produto", "quantidade", "valor_unitario"],
+            "properties": {
+                "cod_produto": {"type": "integer", "description": "Código do produto no Omie"},
+                "quantidade": {"type": "number", "description": "Quantidade saída"},
+                "valor_unitario": {"type": "number", "description": "Valor unitário"},
+                "observacao": {"type": "string", "description": "Observação (ex: remessa para fábrica, consumo)"},
+            },
+        },
+    },
+    {
+        "name": "consultar_movimentos_estoque",
+        "description": "Consulta movimentações de entrada e saída de estoque dos últimos N dias.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cod_produto": {"type": "integer", "description": "Código do produto (opcional — sem ele traz todos)"},
+                "dias": {"type": "integer", "description": "Número de dias para consultar (padrão: 30)"},
+            },
+        },
+    },
+    {
         "name": "emitir_nota_remessa",
         "description": "Emite NF-e de remessa para industrialização (CFOP 5.901) da empresa para a fábrica terceirizada (VINICOLA GIARETTA LTDA). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
         "input_schema": {
@@ -973,6 +1054,12 @@ def run_tool(name, inputs):
         return cadastrar_fornecedor(**inputs)
     if name == "cadastrar_produto":
         return cadastrar_produto(**inputs)
+    if name == "lancar_entrada_estoque":
+        return lancar_entrada_estoque(**inputs)
+    if name == "lancar_saida_estoque":
+        return lancar_saida_estoque(**inputs)
+    if name == "consultar_movimentos_estoque":
+        return consultar_movimentos_estoque(**inputs)
     if name == "emitir_nota_remessa":
         return emitir_nota_remessa(**inputs)
     if name == "emitir_nota_retorno":
