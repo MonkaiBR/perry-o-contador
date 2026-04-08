@@ -31,6 +31,16 @@ EMAIL_SENHA_APP = os.getenv("EMAIL_SENHA_APP")
 EMAIL_CONTADORA = os.getenv("EMAIL_CONTADORA")
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
 MP_API_URL = "https://api.mercadopago.com"
+
+# Dados da fábrica terceirizada
+FABRICA = {
+    "razao_social": "VINICOLA GIARETTA LTDA",
+    "cnpj": "08922937000126",
+    "cep": "99200000",
+    "estado": "RS",
+    "cidade": "Guapore",
+}
+
 claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
 
 SYSTEM_PROMPT = f"""Você é um assistente financeiro especializado, integrado ao sistema Omie ERP da empresa.
@@ -335,6 +345,103 @@ def registrar_venda_omie(cod_cliente, valor_total, descricao, id_pagamento_mp=No
         }
     }
     return omie_request("financas/contareceber", "IncluirContaReceber", dados)
+
+
+# ── Notas de Remessa / Retorno Industrialização ───────────────────────────────
+
+def buscar_ou_cadastrar_fabrica():
+    """Garante que a fábrica está cadastrada no Omie como cliente/destinatário."""
+    resultado = omie_request("geral/clientes", "ListarClientes", {
+        "pagina": 1,
+        "registros_por_pagina": 1,
+        "clientesFiltro": {"cnpj_cpf": FABRICA["cnpj"]},
+    })
+    clientes = resultado.get("clientes_cadastro", []) if isinstance(resultado, dict) else []
+    if clientes:
+        return clientes[0].get("codigo_cliente_omie")
+
+    # Cadastra a fábrica se não existir
+    cadastro = omie_request("geral/clientes", "IncluirCliente", {
+        "razao_social": FABRICA["razao_social"],
+        "cnpj_cpf": FABRICA["cnpj"],
+        "pessoa_fisica": "N",
+        "codigo_cliente_integracao": FABRICA["cnpj"],
+        "cep": FABRICA["cep"],
+        "estado": FABRICA["estado"],
+        "cidade": FABRICA["cidade"],
+    })
+    return cadastro.get("codigo_cliente_omie")
+
+
+def emitir_nota_remessa(cod_produto, descricao_produto, quantidade, valor_unitario, observacao=None):
+    """
+    Emite NF-e de remessa para industrialização (CFOP 5.901).
+    Remetente: sua empresa. Destinatário: fábrica terceirizada.
+    """
+    cod_fabrica = buscar_ou_cadastrar_fabrica()
+    if not cod_fabrica:
+        return {"erro": "Não foi possível localizar/cadastrar a fábrica no Omie."}
+
+    valor_total = round(float(quantidade) * float(valor_unitario), 2)
+    dados = {
+        "cabecalho": {
+            "cOperacao": "R",
+            "cNatureza": "Remessa para Industrialização",
+            "nCodCliente": cod_fabrica,
+        },
+        "det": [{
+            "produto": {
+                "nCodProd": cod_produto,
+                "nQtde": float(quantidade),
+                "nValUnit": float(valor_unitario),
+                "nValTotal": valor_total,
+                "cCFOP": "5901",
+            },
+            "imposto": {
+                "cRegTrib": "1",  # Simples Nacional
+            },
+        }],
+        "infAdic": {
+            "cInfCpl": observacao or f"Remessa de {descricao_produto} para industrialização — {FABRICA['razao_social']} CNPJ {FABRICA['cnpj']}",
+        },
+    }
+    return omie_request("produtos/nfe", "IncluirNF", dados)
+
+
+def emitir_nota_retorno(cod_produto_pronto, descricao_produto, quantidade, valor_unitario, observacao=None):
+    """
+    Emite NF-e de retorno de industrialização (CFOP 5.902).
+    Remetente: fábrica. Destinatário: sua empresa.
+    Registra a entrada do produto acabado no Omie.
+    """
+    cod_fabrica = buscar_ou_cadastrar_fabrica()
+    if not cod_fabrica:
+        return {"erro": "Não foi possível localizar a fábrica no Omie."}
+
+    valor_total = round(float(quantidade) * float(valor_unitario), 2)
+    dados = {
+        "cabecalho": {
+            "cOperacao": "E",  # Entrada
+            "cNatureza": "Retorno de Industrialização",
+            "nCodCliente": cod_fabrica,
+        },
+        "det": [{
+            "produto": {
+                "nCodProd": cod_produto_pronto,
+                "nQtde": float(quantidade),
+                "nValUnit": float(valor_unitario),
+                "nValTotal": valor_total,
+                "cCFOP": "5902",
+            },
+            "imposto": {
+                "cRegTrib": "1",
+            },
+        }],
+        "infAdic": {
+            "cInfCpl": observacao or f"Retorno de industrialização — {descricao_produto} — {FABRICA['razao_social']}",
+        },
+    }
+    return omie_request("produtos/nfe", "IncluirNF", dados)
 
 
 # ── Extrato Financeiro & Bancário ────────────────────────────────────────────
@@ -684,6 +791,36 @@ TOOLS = [
         },
     },
     {
+        "name": "emitir_nota_remessa",
+        "description": "Emite NF-e de remessa para industrialização (CFOP 5.901) da empresa para a fábrica terceirizada (VINICOLA GIARETTA LTDA). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
+        "input_schema": {
+            "type": "object",
+            "required": ["cod_produto", "descricao_produto", "quantidade", "valor_unitario"],
+            "properties": {
+                "cod_produto": {"type": "integer", "description": "Código do produto no Omie"},
+                "descricao_produto": {"type": "string", "description": "Descrição da matéria-prima"},
+                "quantidade": {"type": "number", "description": "Quantidade a remeter"},
+                "valor_unitario": {"type": "number", "description": "Valor unitário"},
+                "observacao": {"type": "string", "description": "Observação adicional para a nota"},
+            },
+        },
+    },
+    {
+        "name": "emitir_nota_retorno",
+        "description": "Emite NF-e de retorno de industrialização (CFOP 5.902) da fábrica para a empresa com o produto acabado. OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
+        "input_schema": {
+            "type": "object",
+            "required": ["cod_produto_pronto", "descricao_produto", "quantidade", "valor_unitario"],
+            "properties": {
+                "cod_produto_pronto": {"type": "integer", "description": "Código do produto acabado no Omie"},
+                "descricao_produto": {"type": "string", "description": "Descrição do produto acabado"},
+                "quantidade": {"type": "number", "description": "Quantidade retornada"},
+                "valor_unitario": {"type": "number", "description": "Valor unitário do produto acabado"},
+                "observacao": {"type": "string", "description": "Observação adicional para a nota"},
+            },
+        },
+    },
+    {
         "name": "buscar_cliente_por_nome",
         "description": "Busca um cliente já cadastrado no Omie pelo nome para vincular a uma venda.",
         "input_schema": {
@@ -792,6 +929,10 @@ def run_tool(name, inputs):
         return cadastrar_cliente(**inputs)
     if name == "cadastrar_fornecedor":
         return cadastrar_fornecedor(**inputs)
+    if name == "emitir_nota_remessa":
+        return emitir_nota_remessa(**inputs)
+    if name == "emitir_nota_retorno":
+        return emitir_nota_retorno(**inputs)
     if name == "buscar_cliente_por_nome":
         return buscar_cliente_por_nome(**inputs)
     if name == "buscar_produto_por_nome":
