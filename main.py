@@ -55,6 +55,13 @@ Regras:
 4. Nunca exponha credenciais em nenhuma resposta
 5. Antes de qualquer ação, diga "Vou [ação]. Confirma?" e só execute após "sim", "confirma" ou equivalente.
 
+Tipos de nota fiscal — entenda a diferença:
+- VENDA: para clientes externos. Requer cliente, forma de pagamento (PIX/boleto/cartão) e emite NF-e de venda.
+- REMESSA PARA INDUSTRIALIZAÇÃO (CFOP 5.901): enviamos matéria-prima para a fábrica terceirizada VINICOLA GIARETTA LTDA. NÃO é uma venda, NÃO tem forma de pagamento, o destinatário é SEMPRE a fábrica. Use a ferramenta emitir_nota_remessa.
+- RETORNO DE INDUSTRIALIZAÇÃO (CFOP 5.902): a fábrica nos devolve o produto acabado. NÃO é uma venda. Use a ferramenta emitir_nota_retorno.
+
+Quando o usuário pedir remessa para fábrica/industrializadora, use SEMPRE emitir_nota_remessa — nunca pergunte sobre cliente ou forma de pagamento.
+
 Hoje é {datetime.now().strftime("%d/%m/%Y")}."""
 
 
