@@ -440,20 +440,33 @@ def buscar_ou_cadastrar_fabrica():
     return cadastro.get("codigo_cliente_omie")
 
 
-def emitir_nota_remessa(cod_produto, descricao_produto, quantidade, valor_unitario, observacao=None):
+def emitir_nota_remessa(cod_produto, descricao_produto, quantidade, valor_unitario, cfop=None, observacao=None):
     """
-    Emite NF-e de remessa para industrialização (CFOP 5.901).
-    Remetente: sua empresa. Destinatário: fábrica terceirizada.
+    Emite NF-e de remessa para industrialização.
+    CFOPs suportados:
+      5901 — Remessa para industrialização (intraestadual)
+      6901 — Remessa para industrialização (interestadual)
+      5924 — Remessa por conta e ordem de terceiros (intraestadual)
+      6924 — Remessa por conta e ordem de terceiros (interestadual) ← Giaretta/RS
     """
     cod_fabrica = buscar_ou_cadastrar_fabrica()
     if not cod_fabrica:
         return {"erro": "Não foi possível localizar/cadastrar a fábrica no Omie."}
 
+    cfop_usado = str(cfop) if cfop else "6924"
+    naturezas = {
+        "5901": "Remessa para Industrialização",
+        "6901": "Remessa para Industrialização Interestadual",
+        "5924": "Remessa p/ Industrialização por Conta e Ordem de Terceiros",
+        "6924": "Remessa p/ Industrialização por Conta e Ordem de Terceiros - Interestadual",
+    }
+    natureza = naturezas.get(cfop_usado, f"Remessa para Industrialização CFOP {cfop_usado}")
+
     valor_total = round(float(quantidade) * float(valor_unitario), 2)
     dados = {
         "cabecalho": {
             "cOperacao": "R",
-            "cNatureza": "Remessa para Industrialização",
+            "cNatureza": natureza,
             "nCodCliente": cod_fabrica,
         },
         "det": [{
@@ -462,14 +475,14 @@ def emitir_nota_remessa(cod_produto, descricao_produto, quantidade, valor_unitar
                 "nQtde": float(quantidade),
                 "nValUnit": float(valor_unitario),
                 "nValTotal": valor_total,
-                "cCFOP": "5901",
+                "cCFOP": cfop_usado,
             },
             "imposto": {
                 "cRegTrib": "1",  # Simples Nacional
             },
         }],
         "infAdic": {
-            "cInfCpl": observacao or f"Remessa de {descricao_produto} para industrialização — {FABRICA['razao_social']} CNPJ {FABRICA['cnpj']}",
+            "cInfCpl": observacao or f"Remessa de {descricao_produto} para industrialização (CFOP {cfop_usado}) — {FABRICA['razao_social']} CNPJ {FABRICA['cnpj']}",
         },
     }
     return omie_request("produtos/nfe", "IncluirNF", dados)
@@ -915,7 +928,7 @@ TOOLS = [
     },
     {
         "name": "emitir_nota_remessa",
-        "description": "Emite NF-e de remessa para industrialização (CFOP 5.901) da empresa para a fábrica terceirizada (VINICOLA GIARETTA LTDA). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
+        "description": "Emite NF-e de remessa para industrialização para a fábrica VINICOLA GIARETTA LTDA (RS). CFOPs: 5901 intraestadual, 6901 interestadual, 5924 por conta/ordem intraestadual, 6924 por conta/ordem interestadual (padrão para Giaretta). OBRIGATÓRIO: apresentar resumo e aguardar confirmação antes de executar.",
         "input_schema": {
             "type": "object",
             "required": ["cod_produto", "descricao_produto", "quantidade", "valor_unitario"],
@@ -924,6 +937,7 @@ TOOLS = [
                 "descricao_produto": {"type": "string", "description": "Descrição da matéria-prima"},
                 "quantidade": {"type": "number", "description": "Quantidade a remeter"},
                 "valor_unitario": {"type": "number", "description": "Valor unitário"},
+                "cfop": {"type": "string", "description": "CFOP: 5901, 6901, 5924 ou 6924 (padrão: 6924 para Giaretta/RS)"},
                 "observacao": {"type": "string", "description": "Observação adicional para a nota"},
             },
         },
