@@ -84,9 +84,11 @@ def omie_request(endpoint, call, params):
         # Omie retorna "faultstring" quando não há registros — tratar como lista vazia
         if "faultstring" in data:
             msg = data["faultstring"].lower()
+            fault = data["faultstring"]
+            logger.error(f"Omie [{call}] faultstring: {fault}")
             if "nenhum" in msg or "não encontrado" in msg or "nao encontrado" in msg:
                 return {"registros": [], "total_de_registros": 0}
-            return {"erro": data["faultstring"]}
+            return {"erro": f"Omie retornou erro: {fault}"}
         return data
     except requests.exceptions.Timeout:
         return {"erro": "O Omie demorou demais para responder. Tente novamente."}
